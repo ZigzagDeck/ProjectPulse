@@ -40,10 +40,10 @@ def render_header():
             <div>
                 <div class="oil-badge">🛢️ Oil India Limited • SIH PS26122</div>
                 <h1 style="margin: 8px 0 4px 0; font-size: 1.8rem; font-weight: 800; color: #ffffff;">
-                    Intelligent Schedule-Linking Layer & Time Agent
+                    ProjectPulse — Schedule-Linking System
                 </h1>
                 <p style="margin: 0; color: #94a3b8; font-size: 0.92rem;">
-                    Autonomous reconciliation of informal site updates into official L1–L6 Primavera P6 master schedules.
+                    Field-to-schedule linking: regex extraction + fuzzy matching + weighted L6→L1 roll-up.
                 </p>
             </div>
             <div style="text-align: right;">
@@ -104,7 +104,7 @@ def render_metric_cards(metrics: Dict[str, Any]):
         st.markdown(clean_html(html4), unsafe_allow_html=True)
 
 def render_chat_bubble(msg: Dict[str, Any]):
-    """Renders an individual chat message with role-based formatting and AI linking chip."""
+    """Renders an individual chat message with role-based formatting and confidence chip."""
     role_key = msg.get("sender_role", "L5_SITE_SUPERVISOR")
     cfg = ROLE_CONFIGS.get(role_key, ROLE_CONFIGS["L5_SITE_SUPERVISOR"])
 

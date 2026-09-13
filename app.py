@@ -1,6 +1,6 @@
-"""SIH PS26122: Intelligent Data Capture & Schedule-Linking Layer for Infrastructure.
+"""ProjectPulse — Field Update & Schedule-Linking System for Infrastructure.
 
-Client: Oil India Limited
+SIH 2026 · PS26122 · Client: Oil India Limited
 Streamlit Application Entry Point.
 """
 
@@ -28,7 +28,7 @@ from ui.analytics import (
 
 # Set page configuration
 st.set_page_config(
-    page_title="Oil India Limited • Schedule-Linking Layer",
+    page_title="ProjectPulse • Oil India Limited",
     page_icon="🛢️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -43,7 +43,7 @@ inject_styles()
 # ----------------- SIDEBAR -----------------
 with st.sidebar:
     st.markdown("### 🛢️ Oil India Limited")
-    st.markdown("<span style='font-size: 0.8rem; color: #94a3b8;'>PS26122 • Infrastructure AI Layer</span>", unsafe_allow_html=True)
+    st.markdown("<span style='font-size: 0.8rem; color: #94a3b8;'>PS26122 · ProjectPulse</span>", unsafe_allow_html=True)
     st.markdown("---")
 
     st.markdown("#### 👤 Active User Identity")
@@ -92,20 +92,20 @@ st.markdown("<div style='margin-bottom: 16px;'></div>", unsafe_allow_html=True)
 
 # ----------------- MAIN TABS -----------------
 tab_chat, tab_wbs, tab_audit, tab_review, tab_analytics, tab_master = st.tabs([
-    "💬 Time Agent & Field Chat",
+    "💬 Field Updates & Chat",
     "🏗️ WBS Schedule Hierarchy (L1–L6)",
     "📋 Live Audit Trail",
     f"⚖️ Review Queue ({summary_metrics['pending_reviews']})",
     "📊 Analytics & Bottlenecks",
-    "📁 Master Schedule & Ingestion"
+    "📁 Master Schedule & Export"
 ])
 
-# ================= TAB 1: TIME AGENT & COLLABORATIVE CHAT =================
+# ================= TAB 1: FIELD UPDATES & CHAT =================
 with tab_chat:
     c_chat, c_info = st.columns([7, 5])
 
     with c_chat:
-        st.markdown(f"### 💬 Field Collaboration Stream & Time Agent")
+        st.markdown(f"### 💬 Field Update Stream")
         st.caption(f"Currently chatting as: **{user_name}** ({current_role_cfg['title']})")
 
         # Chat history container
@@ -117,13 +117,13 @@ with tab_chat:
             for m in messages:
                 render_chat_bubble(m)
 
-        # Quick simulated voice/text buttons
-        st.markdown("<span style='font-size: 0.78rem; color: #94a3b8; font-weight: 600;'>⚡ QUICK SIMULATED VOICE / FIELD REPORTS:</span>", unsafe_allow_html=True)
+        # Quick sample message buttons
+        st.markdown("<span style='font-size: 0.78rem; color: #94a3b8; font-weight: 600;'>⚡ QUICK-TEST SAMPLE MESSAGES:</span>", unsafe_allow_html=True)
         q1, q2, q3 = st.columns(3)
         quick_text = None
-        if q1.button("🗣️ 'Line 24 spool welding 80%'"):
+        if q1.button("📋 'Line 24 spool welding 80%'"):
             quick_text = "Erected Line 24 spool at bay 1, completed 80% welding on Joint W-04"
-        if q2.button("🗣️ 'C-101 plinth curing 100%'"):
+        if q2.button("📋 'C-101 plinth curing 100%'"):
             quick_text = "Curing with wet hessian cloth 100% completed on plinth P-101, ready for shimming"
         if q3.button("⚠️ 'Worked on some piping' (<85%)"):
             quick_text = "Did some preliminary fitting work somewhere on the pipe rack"
@@ -135,11 +135,9 @@ with tab_chat:
                 value=quick_text if quick_text else "",
                 placeholder="e.g. Line 24 spool erected at Rack 3, completed 75% welding on Joint W-04"
             )
-            c_sub, c_mic = st.columns([8, 2])
+            c_sub, _ = st.columns([10, 1])
             with c_sub:
-                submitted = st.form_submit_button("🚀 Send to Time Agent", use_container_width=True)
-            with c_mic:
-                st.caption("🎙️ Voice Ready")
+                submitted = st.form_submit_button("🚀 Submit Field Update", use_container_width=True)
 
         if submitted and input_text.strip():
             # 1. Extraction step
@@ -211,10 +209,10 @@ with tab_chat:
     with c_info:
         info_html = """
         <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 16px;">
-            <h4 style="margin: 0 0 8px 0; color: #f59e0b; font-size: 0.95rem;">How Time Agent Works:</h4>
+            <h4 style="margin: 0 0 8px 0; color: #f59e0b; font-size: 0.95rem;">How Field Updates Are Processed:</h4>
             <ol style="color: #cbd5e1; font-size: 0.82rem; margin: 0; padding-left: 18px; line-height: 1.6;">
-                <li><b>Entity Extraction:</b> NLP parses task intent, equipment codes, and completion % from informal text.</li>
-                <li><b>Fuzzy String Matching:</b> RapidFuzz calculates composite Levenshtein & token similarity against L5/L6 schedule strings.</li>
+                <li><b>Entity Extraction:</b> Rule-based regex parser pulls task codes, equipment tags, completion %, and discipline hints from free-text messages.</li>
+                <li><b>Fuzzy String Matching:</b> RapidFuzz calculates composite Levenshtein &amp; token similarity against L5/L6 schedule strings.</li>
                 <li><b>85% Confidence Gate:</b>
                     <ul>
                         <li><span style="color: #10b981;">≥ 85%</span>: Instantly writes progress to DB and recalculates L6 → L1 rollups.</li>
@@ -480,8 +478,8 @@ with tab_master:
     if uploaded_file is not None:
         try:
             up_df = pd.read_csv(uploaded_file)
-            st.write(f"Uploaded file contains **{len(up_df)}** records:")
+            st.write(f"Uploaded file contains **{len(up_df)}** records (preview, first 5 rows):")
             st.dataframe(up_df.head(5), use_container_width=True)
-            st.info("Synthetic format recognized. Tasks can be merged into master schedule.")
+            st.warning("⚠️ Preview only — full CSV ingestion into the live schedule is not yet implemented.")
         except Exception as e:
             st.error(f"Error parsing file: {e}")
