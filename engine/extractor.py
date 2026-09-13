@@ -1,11 +1,11 @@
-"""Extraction Engine: Natural Language & Heuristic Task Extraction for SIH PS26122.
+"""Rule-Based Entity Extraction Engine for ProjectPulse (SIH PS26122).
 
-Ingests messy, colloquial field updates from site supervisors and extracts:
-1. Whether message contains a progress update
-2. Core task entity string
+Ingests free-text field updates from site supervisors and extracts:
+1. Whether the message contains a progress update (keyword scan)
+2. Core task entity string (after stripping conversational filler)
 3. State (e.g., STARTED, IN_PROGRESS, COMPLETED)
 4. Calculated/extracted progress percentage (0.0 to 100.0)
-5. Discipline hints
+5. Discipline hints (Piping, Civil, Electrical, Quality)
 """
 
 import re

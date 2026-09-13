@@ -1,7 +1,7 @@
-"""Schedule-Linking Matching Engine for SIH PS26122 (Oil India Limited).
+"""Fuzzy-Matching Engine for ProjectPulse (SIH PS26122 — Oil India Limited).
 
 Performs fuzzy string matching (Levenshtein, Token Set Ratio, WRatio) using RapidFuzz
-to compare extracted worker chat updates against official L5/L6 Primavera P6 task strings.
+to compare extracted worker field updates against official L5/L6 Primavera P6 task strings.
 
 Enforces PS26122 Threshold Logic:
 - Confidence >= 85%: Auto-update master schedule database.

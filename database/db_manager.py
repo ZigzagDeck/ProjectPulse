@@ -1,4 +1,4 @@
-"""Database Manager for SIH PS26122 Intelligent Schedule-Linking Layer."""
+"""Database Manager for ProjectPulse (SIH PS26122 — Oil India Limited)."""
 
 import sqlite3
 import os

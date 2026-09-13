@@ -1,12 +1,12 @@
 @echo off
 echo ===================================================
-echo  Oil India Limited - Intelligent Schedule Linking Layer
-echo  SIH PS26122 Infrastructure AI Solution
+echo  ProjectPulse - Field Update & Schedule-Linking System
+echo  SIH 2026 PS26122 - Oil India Limited
 echo ===================================================
 echo.
 echo Installing/verifying dependencies...
 python -m pip install -r requirements.txt
 echo.
-echo Launching Streamlit Dashboard...
+echo Launching dashboard...
 streamlit run app.py
 pause
