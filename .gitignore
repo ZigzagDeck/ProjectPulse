@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest cache
+.pytest_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE / Editor artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# Temporary / Output zip files
+*.zip
+
+# Internal developer notes (not for public repo)
+DEVELOPER_HONEST_AUDIT.md
