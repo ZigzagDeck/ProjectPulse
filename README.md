@@ -342,4 +342,4 @@ MIT License — see [LICENSE](LICENSE) for full terms.
 
 ---
 
-*Built for Smart India Hackathon 2026 — Oil India Limited, Duliajan, Assam.*
+*Built for Smart India Hackathon 2026*
