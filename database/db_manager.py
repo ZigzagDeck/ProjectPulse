@@ -2,6 +2,7 @@
 
 import sqlite3
 import os
+import math
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from database.schema import SCHEMA_SQL
@@ -384,6 +385,11 @@ def get_project_summary_metrics(db_path: str = DB_PATH) -> Dict[str, Any]:
     cur.execute("SELECT COUNT(*) FROM audit_trail")
     total_audits = cur.fetchone()[0]
 
+    cur.execute("SELECT COUNT(*) FROM audit_trail WHERE status = 'AUTO_APPROVED'")
+    auto_approved = cur.fetchone()[0]
+
+    auto_approval_rate = round((auto_approved / total_audits) * 100.0, 1) if total_audits else 0.0
+
     conn.close()
     return {
         "total_tasks": total_tasks,
@@ -392,4 +398,142 @@ def get_project_summary_metrics(db_path: str = DB_PATH) -> Dict[str, Any]:
         "completed_micro": completed_micro,
         "pending_reviews": pending_reviews,
         "total_audits": total_audits,
+        "auto_approved": auto_approved,
+        "auto_approval_rate": auto_approval_rate,
     }
+
+
+def get_dashboard_insights(db_path: str = DB_PATH) -> Dict[str, Any]:
+    """Return compact operational insights for the executive dashboard."""
+    tasks = get_all_tasks(db_path=db_path)
+    execution_tasks = [task for task in tasks if task["level"] in ("L4", "L5", "L6")]
+    at_risk = []
+    for task in execution_tasks:
+        planned = float(task.get("planned_duration") or 0)
+        actual = float(task.get("actual_duration") or 0)
+        progress = float(task.get("progress_pct") or 0)
+        burn_ratio = actual / planned if planned > 0 else 0.0
+        if progress < 100 and (task.get("status") == "DELAYED" or (burn_ratio >= 0.72 and progress < 70)):
+            enriched = dict(task)
+            enriched["burn_ratio"] = round(burn_ratio * 100, 1)
+            at_risk.append(enriched)
+
+    at_risk.sort(key=lambda item: (item["burn_ratio"] - float(item.get("progress_pct") or 0)), reverse=True)
+    l2_workfronts = [task for task in tasks if task["level"] == "L2"]
+    audit_records = get_audit_trail(limit=8, db_path=db_path)
+    confidence_values = [float(item["confidence_score"]) for item in audit_records if item.get("confidence_score") is not None]
+
+    return {
+        "at_risk": at_risk[:5],
+        "at_risk_count": len(at_risk),
+        "l2_workfronts": l2_workfronts,
+        "recent_activity": audit_records,
+        "recent_avg_confidence": round(sum(confidence_values) / len(confidence_values), 1) if confidence_values else 0.0,
+    }
+
+
+def _clean_import_value(value: Any) -> Any:
+    """Normalize spreadsheet nulls without importing pandas in the data layer."""
+    if value is None:
+        return None
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return value
+
+
+def import_schedule_tasks(records: List[Dict[str, Any]], db_path: str = DB_PATH) -> Dict[str, int]:
+    """Validate and upsert Primavera-style schedule rows in one transaction.
+
+    Existing tasks are updated and new tasks are inserted. Parents may be either
+    already present in the database or included in the same upload.
+    """
+    if not records:
+        raise ValueError("The upload does not contain any schedule rows.")
+
+    required = {"id", "code", "level", "name", "discipline"}
+    valid_levels = {"L1", "L2", "L3", "L4", "L5", "L6"}
+    valid_statuses = {"NOT_STARTED", "IN_PROGRESS", "COMPLETED", "DELAYED"}
+    normalized = []
+    seen_ids = set()
+
+    for index, raw in enumerate(records, start=2):
+        row = {key: _clean_import_value(value) for key, value in raw.items()}
+        missing = sorted(key for key in required if not row.get(key))
+        if missing:
+            raise ValueError(f"Row {index}: missing required field(s): {', '.join(missing)}")
+
+        row["id"] = str(row["id"])
+        if row["id"] in seen_ids:
+            raise ValueError(f"Row {index}: duplicate task id '{row['id']}'.")
+        seen_ids.add(row["id"])
+
+        row["level"] = str(row["level"]).upper()
+        if row["level"] not in valid_levels:
+            raise ValueError(f"Row {index}: level must be L1 through L6.")
+
+        row["status"] = str(row.get("status") or "NOT_STARTED").upper()
+        if row["status"] not in valid_statuses:
+            raise ValueError(f"Row {index}: invalid status '{row['status']}'.")
+
+        try:
+            row["weight"] = float(row.get("weight") if row.get("weight") is not None else 1.0)
+            row["progress_pct"] = min(100.0, max(0.0, float(row.get("progress_pct") or 0.0)))
+            row["planned_duration"] = max(0, int(float(row.get("planned_duration") or 0)))
+            row["actual_duration"] = max(0, int(float(row.get("actual_duration") or 0)))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Row {index}: invalid numeric value ({exc}).") from exc
+
+        normalized.append(row)
+
+    conn = get_connection(db_path)
+    try:
+        existing_ids = {item[0] for item in conn.execute("SELECT id FROM tasks").fetchall()}
+        available_ids = existing_ids | seen_ids
+        for index, row in enumerate(normalized, start=2):
+            parent_id = row.get("parent_id")
+            if row["level"] != "L1" and not parent_id:
+                raise ValueError(f"Row {index}: {row['level']} task '{row['id']}' requires a parent_id.")
+            if parent_id and parent_id not in available_ids:
+                raise ValueError(f"Row {index}: parent_id '{parent_id}' was not found.")
+
+        inserted = 0
+        updated = 0
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with conn:
+            for row in sorted(normalized, key=lambda item: int(item["level"][1:])):
+                exists = row["id"] in existing_ids
+                conn.execute(
+                    """
+                    INSERT INTO tasks (
+                        id, code, level, parent_id, name, description, discipline,
+                        weight, planned_duration, actual_duration, planned_start,
+                        planned_end, progress_pct, status, last_updated
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        code=excluded.code, level=excluded.level, parent_id=excluded.parent_id,
+                        name=excluded.name, description=excluded.description,
+                        discipline=excluded.discipline, weight=excluded.weight,
+                        planned_duration=excluded.planned_duration,
+                        actual_duration=excluded.actual_duration,
+                        planned_start=excluded.planned_start, planned_end=excluded.planned_end,
+                        progress_pct=excluded.progress_pct, status=excluded.status,
+                        last_updated=excluded.last_updated
+                    """,
+                    (
+                        row["id"], row["code"], row["level"], row.get("parent_id"),
+                        row["name"], row.get("description"), row["discipline"],
+                        row["weight"], row["planned_duration"], row["actual_duration"],
+                        row.get("planned_start"), row.get("planned_end"),
+                        row["progress_pct"], row["status"], now_str,
+                    ),
+                )
+                updated += int(exists)
+                inserted += int(not exists)
+    finally:
+        conn.close()
+
+    recalculate_rollup(db_path=db_path)
+    return {"inserted": inserted, "updated": updated, "total": len(normalized)}

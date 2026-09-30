@@ -13,9 +13,44 @@ from typing import List, Dict, Any, Optional
 CHART_THEME = {
     "paper_bgcolor": "rgba(0,0,0,0)",
     "plot_bgcolor": "rgba(0,0,0,0)",
-    "font": {"family": "Plus Jakarta Sans, sans-serif", "color": "#cbd5e1"},
-    "margin": dict(l=20, r=20, t=40, b=20),
+    "font": {"family": "DM Sans, sans-serif", "color": "#aebed0", "size": 12},
+    "margin": dict(l=24, r=24, t=62, b=26),
+    "hoverlabel": {"bgcolor": "#14273d", "font_color": "#f8fafc", "bordercolor": "#314860"},
 }
+
+CHART_CONFIG = {"displayModeBar": False, "responsive": True}
+
+
+def plot_level_progress(tasks: List[Dict[str, Any]]) -> Optional[Any]:
+    """Show average progress by WBS level for the command-center overview."""
+    if not HAS_PLOTLY or not go:
+        return None
+    df = pd.DataFrame(tasks)
+    if df.empty:
+        return go.Figure()
+    summary = df.groupby("level", as_index=False)["progress_pct"].mean()
+    summary["order"] = summary["level"].str[1:].astype(int)
+    summary = summary.sort_values("order")
+    colors = ["#a78bfa", "#22d3ee", "#34d399", "#f59e0b", "#fb7185", "#60a5fa"]
+    fig = go.Figure(go.Bar(
+        x=summary["level"],
+        y=summary["progress_pct"],
+        marker=dict(color=colors[:len(summary)], line=dict(width=0)),
+        text=[f"{value:.1f}%" for value in summary["progress_pct"]],
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate="%{x}<br>Average progress: %{y:.1f}%<extra></extra>",
+    ))
+    fig.update_layout(
+        title={"text": "<b>Progress through the work breakdown</b><br><sup>Average completion at each control level</sup>", "x": 0.03},
+        height=350,
+        bargap=0.42,
+        showlegend=False,
+        **CHART_THEME,
+    )
+    fig.update_xaxes(showgrid=False, title=None)
+    fig.update_yaxes(range=[0, 108], gridcolor="rgba(148,163,184,.10)", zeroline=False, ticksuffix="%", title=None)
+    return fig
 
 def plot_planned_vs_actual(tasks: List[Dict[str, Any]]) -> Optional[Any]:
     """Renders Real vs. Planned Durations for L4 & L5 activities to track bottlenecks."""
@@ -45,7 +80,7 @@ def plot_planned_vs_actual(tasks: List[Dict[str, Any]]) -> Optional[Any]:
     ))
 
     fig.update_layout(
-        title="<b>Planned vs. Actual Duration by Activity (Days)</b>",
+        title={"text": "<b>Duration burn by activity</b><br><sup>Planned days compared with actual effort</sup>", "x": 0.03},
         barmode="group",
         xaxis_tickangle=-35,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -83,7 +118,7 @@ def plot_discipline_progress(tasks: List[Dict[str, Any]]) -> Optional[Any]:
     ))
 
     fig.update_layout(
-        title="<b>Average Progress Completion by Discipline (%)</b>",
+        title={"text": "<b>Discipline performance</b><br><sup>Average completion across the schedule</sup>", "x": 0.03},
         xaxis=dict(range=[0, 105], showgrid=True, gridcolor="rgba(255,255,255,0.06)"),
         yaxis=dict(showgrid=False),
         **CHART_THEME
@@ -120,7 +155,7 @@ def plot_status_distribution(tasks: List[Dict[str, Any]]) -> Optional[Any]:
     ))
 
     fig.update_layout(
-        title="<b>Overall Task Status Distribution</b>",
+        title={"text": "<b>Schedule status mix</b><br><sup>Distribution across all WBS nodes</sup>", "x": 0.03},
         showlegend=False,
         **CHART_THEME
     )
@@ -154,7 +189,7 @@ def plot_wbs_sunburst(tasks: List[Dict[str, Any]]) -> Optional[Any]:
     ))
 
     fig.update_layout(
-        title="<b>Interactive WBS Hierarchy (L1 → L6) with Roll-up Progress</b>",
+        title={"text": "<b>Interactive WBS hierarchy</b><br><sup>Drill from portfolio to field task</sup>", "x": 0.03},
         **CHART_THEME
     )
     return fig

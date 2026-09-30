@@ -1,34 +1,31 @@
-"""ProjectPulse — Field Update & Schedule-Linking System for Infrastructure.
-
-SIH 2026 · PS26122 · Client: Oil India Limited
-Streamlit Application Entry Point.
-"""
+"""ProjectPulse — Field Update & Schedule-Linking System for Infrastructure."""
 
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from html import escape
 from database.db_manager import (
     init_db, get_all_tasks, get_tasks_by_level, get_task_by_id,
     update_task_progress, add_chat_message, get_chat_messages,
     add_audit_trail_entry, get_audit_trail, get_review_queue,
     process_review_queue_item, get_target_tasks_for_matching,
-    get_project_summary_metrics
+    get_project_summary_metrics, get_dashboard_insights, import_schedule_tasks
 )
 from engine.extractor import parse_field_message
 from engine.matcher import match_field_update, CONFIDENCE_THRESHOLD
 from ui.styles import inject_styles
 from ui.components import (
     render_header, render_metric_cards, render_chat_bubble,
-    render_audit_table, ROLE_CONFIGS, clean_html
+    render_audit_table, ROLE_CONFIGS, clean_html, role_can
 )
 from ui.analytics import (
     plot_planned_vs_actual, plot_discipline_progress,
-    plot_status_distribution, plot_wbs_sunburst
+    plot_status_distribution, plot_wbs_sunburst, plot_level_progress, CHART_CONFIG
 )
 
 # Set page configuration
 st.set_page_config(
-    page_title="ProjectPulse • Oil India Limited",
+    page_title="ProjectPulse • Project Control Room",
     page_icon="🛢️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -42,42 +39,47 @@ inject_styles()
 
 # ----------------- SIDEBAR -----------------
 with st.sidebar:
-    st.markdown("### 🛢️ Oil India Limited")
-    st.markdown("<span style='font-size: 0.8rem; color: #94a3b8;'>PS26122 · ProjectPulse</span>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="sidebar-brand">
+            <div class="sidebar-brand-mark"><span>PP</span></div>
+            <div class="sidebar-brand-copy"><b>ProjectPulse</b><span>PROJECT CONTROL</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.markdown("---")
 
-    st.markdown("#### 👤 Active User Identity")
+    st.markdown("<div class='eyebrow'>Active workspace</div>", unsafe_allow_html=True)
     selected_role_key = st.selectbox(
-        "Select your Role / Level:",
+        "Operating role",
         options=list(ROLE_CONFIGS.keys()),
         format_func=lambda k: f"{ROLE_CONFIGS[k]['icon']} {ROLE_CONFIGS[k]['title']}",
         index=2  # Default to Site Supervisor
     )
     current_role_cfg = ROLE_CONFIGS[selected_role_key]
 
-    user_name = st.text_input("User Name:", value=current_role_cfg["default_name"])
+    user_name = st.text_input("Signed in as", value=current_role_cfg["default_name"])
+    st.caption(current_role_cfg["scope"])
 
     st.markdown("---")
-    st.markdown("#### ⚙️ System Controls")
-    st.markdown(f"**Confidence Threshold**: `{CONFIDENCE_THRESHOLD}%`")
-    st.caption(r"Matches $\ge 85\%$ auto-update master P6 schedule. Matches $< 85\%$ enter the Review Queue.")
+    st.markdown("<div class='eyebrow'>Governance</div>", unsafe_allow_html=True)
+    st.markdown(f"**{CONFIDENCE_THRESHOLD:.0f}%** confidence gate")
+    st.caption("High-confidence matches update P6 instantly. Everything else stays in the verification queue.")
 
-    if st.button("🔄 Reset / Re-seed Schedule DB", use_container_width=True):
-        init_db(force_reseed=True)
-        st.success("Database re-seeded with Primavera P6 master schedule!")
-        st.rerun()
+    if role_can(selected_role_key, "reset"):
+        with st.expander("Advanced controls"):
+            if st.button("Reset demonstration data", use_container_width=True):
+                init_db(force_reseed=True)
+                st.success("Schedule data restored.")
+                st.rerun()
 
     st.markdown("---")
     st.markdown(
         """
-        <div style="font-size: 0.75rem; color: #64748b; line-height: 1.4;">
-            <b>WBS Hierarchy:</b><br>
-            • L1: Project Level<br>
-            • L2: Facility / Plant<br>
-            • L3: Discipline Package<br>
-            • L4: Area Work Package<br>
-            • L5: Work Activity<br>
-            • L6: Executable Daily Task
+        <div style="font-size:.72rem;color:#70849b;line-height:1.55;">
+            <b style="color:#9fb0c6;">Live data chain</b><br>
+            Field report → entity extraction → confidence gate → WBS roll-up → audit record
         </div>
         """,
         unsafe_allow_html=True
@@ -87,26 +89,113 @@ with st.sidebar:
 render_header()
 summary_metrics = get_project_summary_metrics()
 render_metric_cards(summary_metrics)
+all_tasks = get_all_tasks()
+dashboard_insights = get_dashboard_insights()
 
 st.markdown("<div style='margin-bottom: 16px;'></div>", unsafe_allow_html=True)
 
 # ----------------- MAIN TABS -----------------
-tab_chat, tab_wbs, tab_audit, tab_review, tab_analytics, tab_master = st.tabs([
-    "💬 Field Updates & Chat",
-    "🏗️ WBS Schedule Hierarchy (L1–L6)",
-    "📋 Live Audit Trail",
-    f"⚖️ Review Queue ({summary_metrics['pending_reviews']})",
-    "📊 Analytics & Bottlenecks",
-    "📁 Master Schedule & Export"
+tab_overview, tab_chat, tab_wbs, tab_review, tab_analytics, tab_audit, tab_master = st.tabs([
+    "Overview",
+    "Field updates",
+    "WBS schedule",
+    f"Review queue · {summary_metrics['pending_reviews']}",
+    "Analytics",
+    "Audit trail",
+    "Schedule data",
 ])
 
-# ================= TAB 1: FIELD UPDATES & CHAT =================
+# ================= TAB 1: EXECUTIVE OVERVIEW =================
+with tab_overview:
+    st.markdown(
+        """
+        <div class="section-heading"><div><span class="eyebrow">Command center</span><h3>Project health at a glance</h3><p>Progress, risk, and verification signals distilled for the current shift.</p></div></div>
+        """,
+        unsafe_allow_html=True,
+    )
+    overview_chart, overview_focus = st.columns([7, 4], gap="large")
+    with overview_chart:
+        fig_levels = plot_level_progress(all_tasks)
+        if fig_levels:
+            st.plotly_chart(fig_levels, use_container_width=True, config=CHART_CONFIG)
+
+    with overview_focus:
+        st.markdown("#### Focus now")
+        pending = summary_metrics["pending_reviews"]
+        if pending:
+            st.markdown(
+                f'<div class="insight-card attention"><div class="insight-title">{pending} update(s) need verification</div><div class="insight-copy">Resolve low-confidence field evidence before the next schedule cut.</div></div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown('<div class="insight-card good"><div class="insight-title">Verification queue is clear</div><div class="insight-copy">No ambiguous updates are waiting for a decision.</div></div>', unsafe_allow_html=True)
+
+        risks = dashboard_insights["at_risk"]
+        if risks:
+            for risk in risks[:2]:
+                st.markdown(
+                    clean_html(
+                        f"""
+                        <div class="insight-card critical">
+                            <div class="insight-title">{escape(risk['code'])} · low progress against duration</div>
+                            <div class="insight-copy">{escape(risk['name'])}<br>{risk['progress_pct']:.0f}% complete · {risk['burn_ratio']:.0f}% of planned duration consumed</div>
+                        </div>
+                        """
+                    ),
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.markdown('<div class="insight-card good"><div class="insight-title">No duration-pressure flags</div><div class="insight-copy">Active work packages remain inside the configured risk heuristic.</div></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="section-heading"><div><span class="eyebrow">Portfolio</span><h3>Workfront snapshot</h3></div></div>', unsafe_allow_html=True)
+    workfront_cols = st.columns(max(1, len(dashboard_insights["l2_workfronts"])))
+    for col, workfront in zip(workfront_cols, dashboard_insights["l2_workfronts"]):
+        with col:
+            st.markdown(
+                clean_html(
+                    f"""
+                    <div class="panel">
+                        <span class="wbs-badge badge-l2">{escape(workfront['code'])}</span>
+                        <div style="color:#f4f8fd;font-weight:700;font-size:.9rem;margin:10px 0 3px;min-height:42px;">{escape(workfront['name'])}</div>
+                        <div style="font-size:1.45rem;font-weight:700;color:#fff;">{workfront['progress_pct']:.1f}%</div>
+                        <div class="oil-progress-bg"><div class="oil-progress-fill" style="width:{workfront['progress_pct']}%;"></div></div>
+                        <div style="color:#7890a9;font-size:.71rem;margin-top:8px;">{escape(workfront['discipline'])}</div>
+                    </div>
+                    """
+                ),
+                unsafe_allow_html=True,
+            )
+
+    recent_col, signal_col = st.columns([7, 4], gap="large")
+    with recent_col:
+        st.markdown("#### Recent control activity")
+        recent = dashboard_insights["recent_activity"]
+        if recent:
+            render_audit_table(recent[:5])
+        else:
+            st.markdown('<div class="empty-state">Field decisions will appear here as updates arrive.</div>', unsafe_allow_html=True)
+    with signal_col:
+        st.markdown("#### Data quality")
+        st.markdown(
+            clean_html(
+                f"""
+                <div class="mini-grid">
+                    <div class="mini-stat"><span>Recent match confidence</span><strong>{dashboard_insights['recent_avg_confidence']:.0f}%</strong></div>
+                    <div class="mini-stat"><span>Audited updates</span><strong>{summary_metrics['total_audits']}</strong></div>
+                    <div class="mini-stat"><span>WBS nodes</span><strong>{summary_metrics['total_tasks']}</strong></div>
+                </div>
+                """
+            ),
+            unsafe_allow_html=True,
+        )
+
+# ================= TAB 2: FIELD UPDATES & CHAT =================
 with tab_chat:
     c_chat, c_info = st.columns([7, 5])
 
     with c_chat:
-        st.markdown(f"### 💬 Field Update Stream")
-        st.caption(f"Currently chatting as: **{user_name}** ({current_role_cfg['title']})")
+        st.markdown("### Field evidence inbox")
+        st.caption(f"Submitting as **{user_name}** · {current_role_cfg['title']}")
 
         # Chat history container
         messages = get_chat_messages(limit=60)
@@ -225,7 +314,7 @@ with tab_chat:
         st.markdown(clean_html(info_html), unsafe_allow_html=True)
 
         st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
-        st.markdown("#### 🎯 Quick Task Progress Updater")
+        st.markdown("#### Direct task update")
         target_tasks = get_target_tasks_for_matching()
         task_options = {t["id"]: f"[{t['level']}] {t['code']} - {t['name']} ({t['progress_pct']}%)" for t in target_tasks}
 
@@ -255,8 +344,8 @@ with tab_chat:
 
 # ================= TAB 2: WBS SCHEDULE HIERARCHY (L1 TO L6) =================
 with tab_wbs:
-    st.markdown("### 🏗️ Work Breakdown Structure (L1 to L6 Hierarchy)")
-    st.caption("Hierarchical schedule tracking with real-time weighted progress roll-up from L6 daily tasks up to L1 project macro level.")
+    st.markdown("### Work breakdown structure")
+    st.caption("Search and inspect the live L1–L6 hierarchy. Progress rolls up from executable field tasks.")
 
     all_tasks = get_all_tasks()
 
@@ -294,10 +383,10 @@ with tab_wbs:
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
                     <div>
                         <span class="wbs-badge {badge_class}">{lvl}</span>
-                        <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #94a3b8; margin-left: 6px;">{t['code']} ({t['id']})</span>
-                        <span class="wbs-badge {status_class}" style="margin-left: 8px;">{t['status']}</span>
-                        <h4 style="margin: 6px 0 2px 0; color: #ffffff; font-size: 1.05rem;">{t['name']}</h4>
-                        <p style="margin: 0; color: #94a3b8; font-size: 0.82rem;">{t.get('description', '')}</p>
+                        <span style="font-family:'IBM Plex Mono',monospace;font-size:.78rem;color:#8fa4bb;margin-left:6px;">{escape(t['code'])} · {escape(t['id'])}</span>
+                        <span class="wbs-badge {status_class}" style="margin-left:8px;">{escape(t['status'].replace('_', ' '))}</span>
+                        <h4 style="margin:7px 0 3px;color:#fff;font-size:1rem;">{escape(t['name'])}</h4>
+                        <p style="margin:0;color:#8fa4bb;font-size:.8rem;">{escape(t.get('description', '') or '')}</p>
                     </div>
                     <div style="text-align: right; min-width: 140px;">
                         <div style="font-size: 1.4rem; font-weight: 800; color: #f59e0b;">{t['progress_pct']:.1f}%</div>
@@ -308,7 +397,7 @@ with tab_wbs:
                     <div class="oil-progress-fill" style="width: {t['progress_pct']}%;"></div>
                 </div>
                 <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #64748b; margin-top: 4px;">
-                    <span>Discipline: <b>{t['discipline']}</b></span>
+                    <span>Discipline: <b>{escape(t['discipline'])}</b></span>
                     <span>Planned: {t['planned_duration']}d | Actual: {t['actual_duration']}d</span>
                 </div>
             </div>
@@ -317,7 +406,7 @@ with tab_wbs:
 
 # ================= TAB 3: LIVE AUDIT TRAIL =================
 with tab_audit:
-    st.markdown("### 📋 Live Audit Trail (PS26122 Standardized Table)")
+    st.markdown("### Live audit trail")
     st.caption("Displays auto-linked and manually verified tasks with exact timestamp, confidence score, extracted metrics, and audit history.")
 
     col_f1, col_f2 = st.columns([3, 7])
@@ -330,8 +419,11 @@ with tab_audit:
 
 # ================= TAB 4: MANAGER REVIEW QUEUE =================
 with tab_review:
-    st.markdown("### ⚖️ Manager Review Queue (Confidence < 85%)")
-    st.caption("Human-in-the-loop review for ambiguous worker slang or borderline matches. Human managers can approve, remap to a different node, adjust percentage, or reject.")
+    st.markdown("### Verification queue")
+    st.caption("Resolve ambiguous field evidence, remap it to the right WBS node, and preserve every decision in the audit trail.")
+    can_review = role_can(selected_role_key, "review")
+    if not can_review:
+        st.markdown('<div class="permission-note">Read-only for Site Supervisors. Switch to a Discipline Lead or Project Director role to approve or reject evidence.</div>', unsafe_allow_html=True)
 
     pending_items = get_review_queue()
 
@@ -348,18 +440,18 @@ with tab_review:
                 review_card_html = f"""
                 <div class="review-card">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <span class="wbs-badge badge-l4">Item #{audit_id} • Status: PENDING_REVIEW</span>
-                        <span style="color: #64748b; font-size: 0.75rem;">Submitted: {item['timestamp']}</span>
+                        <span class="wbs-badge badge-l4">Item #{audit_id} · Pending review</span>
+                        <span style="color:#71869e;font-size:.75rem;">{escape(item['timestamp'])}</span>
                     </div>
                     <div style="font-size: 0.95rem; color: #ffffff; margin-bottom: 6px;">
-                        <b>Worker Raw Input:</b> <i>"{item['raw_input']}"</i>
+                        <b>Field evidence:</b> “{escape(item['raw_input'])}”
                     </div>
                     <div style="font-size: 0.82rem; color: #94a3b8;">
-                        Sender: <b>{item['sender_name']}</b> ({item['sender_role']}) | Extracted Task: <code>{item['extracted_task']}</code>
+                        Submitted by <b>{escape(item['sender_name'])}</b> · Extracted work: <code>{escape(item['extracted_task'] or '')}</code>
                     </div>
                     <div style="margin-top: 8px;">
                         <span class="match-chip match-low">
-                            AI Top Match: <b>{item['matched_node_id']}</b> ({item['matched_node_name']}) • Confidence: <b>{item['confidence_score']:.1f}%</b> (&lt; 85%)
+                            Suggested match: <b>{escape(item['matched_node_id'] or 'Unresolved')}</b> · Confidence <b>{item['confidence_score']:.1f}%</b>
                         </span>
                     </div>
                 </div>
@@ -393,7 +485,7 @@ with tab_review:
 
                     btn_c1, btn_c2 = st.columns(2)
                     with btn_c1:
-                        if st.button(f"✅ Approve & Update Master Schedule", key=f"app_{audit_id}", use_container_width=True):
+                        if st.button("Approve & update schedule", key=f"app_{audit_id}", use_container_width=True, disabled=not can_review):
                             process_review_queue_item(
                                 audit_id=audit_id,
                                 decision="APPROVE",
@@ -406,7 +498,7 @@ with tab_review:
                             st.rerun()
 
                     with btn_c2:
-                        if st.button(f"❌ Reject Update", key=f"rej_{audit_id}", use_container_width=True):
+                        if st.button("Reject evidence", key=f"rej_{audit_id}", use_container_width=True, disabled=not can_review):
                             process_review_queue_item(
                                 audit_id=audit_id,
                                 decision="REJECT",
@@ -418,8 +510,8 @@ with tab_review:
 
 # ================= TAB 5: ANALYTICS & BOTTLENECK DASHBOARD =================
 with tab_analytics:
-    st.markdown("### 📊 Infrastructure Project Analytics & Bottlenecks")
-    st.caption("Visual tracking of planned vs. actual durations and discipline progress to isolate operational bottlenecks across Civil, Piping, and Electrical works.")
+    st.markdown("### Performance analytics")
+    st.caption("Compare duration burn, discipline progress, schedule status, and WBS roll-up in one analytical workspace.")
 
     all_tasks = get_all_tasks()
 
@@ -427,13 +519,13 @@ with tab_analytics:
     with an_row1_c1:
         fig_dur = plot_planned_vs_actual(all_tasks)
         if fig_dur:
-            st.plotly_chart(fig_dur, use_container_width=True)
+            st.plotly_chart(fig_dur, use_container_width=True, config=CHART_CONFIG)
         else:
             st.info("Planned vs Actual chart available with Plotly.")
     with an_row1_c2:
         fig_disc = plot_discipline_progress(all_tasks)
         if fig_disc:
-            st.plotly_chart(fig_disc, use_container_width=True)
+            st.plotly_chart(fig_disc, use_container_width=True, config=CHART_CONFIG)
         else:
             st.info("Discipline progress chart available with Plotly.")
 
@@ -441,26 +533,26 @@ with tab_analytics:
     with an_row2_c1:
         fig_stat = plot_status_distribution(all_tasks)
         if fig_stat:
-            st.plotly_chart(fig_stat, use_container_width=True)
+            st.plotly_chart(fig_stat, use_container_width=True, config=CHART_CONFIG)
         else:
             st.info("Status distribution chart available with Plotly.")
     with an_row2_c2:
         fig_sun = plot_wbs_sunburst(all_tasks)
         if fig_sun:
-            st.plotly_chart(fig_sun, use_container_width=True)
+            st.plotly_chart(fig_sun, use_container_width=True, config=CHART_CONFIG)
         else:
             st.info("WBS Sunburst chart available with Plotly.")
 
 # ================= TAB 6: MASTER SCHEDULE & INGESTION =================
 with tab_master:
-    st.markdown("### 📁 Master Schedule & Synthetic Ingestion Layer")
-    st.caption("Inspect raw Primavera P6 database records or upload synthetic daily reports / discipline CSVs.")
+    st.markdown("### Schedule data workspace")
+    st.caption("Inspect, export, and safely upsert Primavera-style CSV records into the live hierarchy.")
 
     all_tasks_df = pd.DataFrame(get_all_tasks())
     if not all_tasks_df.empty:
         csv_data = all_tasks_df.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="📥 Export Live Primavera Master Schedule (CSV)",
+            label="Export live schedule · CSV",
             data=csv_data,
             file_name=f"oil_india_p6_schedule_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv"
@@ -473,13 +565,20 @@ with tab_master:
         )
 
     st.markdown("---")
-    st.markdown("#### 📤 Upload Synthetic CSV / Daily Report")
-    uploaded_file = st.file_uploader("Upload CSV file matching Primavera export format:", type=["csv"])
+    st.markdown("#### Import schedule changes")
+    st.caption("Required columns: id, code, level, name, discipline. Existing IDs are updated; new IDs are inserted after parent validation.")
+    can_import = role_can(selected_role_key, "import")
+    if not can_import:
+        st.markdown('<div class="permission-note">Schedule import is available to Discipline Leads and Project Directors. You can still inspect and export the live schedule.</div>', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("Choose a Primavera-style CSV", type=["csv"])
     if uploaded_file is not None:
         try:
             up_df = pd.read_csv(uploaded_file)
-            st.write(f"Uploaded file contains **{len(up_df)}** records (preview, first 5 rows):")
-            st.dataframe(up_df.head(5), use_container_width=True)
-            st.warning("⚠️ Preview only — full CSV ingestion into the live schedule is not yet implemented.")
+            st.write(f"**{len(up_df)} rows ready for validation**")
+            st.dataframe(up_df.head(8), use_container_width=True, hide_index=True)
+            if st.button("Validate & import schedule", type="primary", disabled=not can_import, use_container_width=True):
+                result = import_schedule_tasks(up_df.to_dict(orient="records"))
+                st.success(f"Import complete: {result['inserted']} inserted, {result['updated']} updated.")
+                st.rerun()
         except Exception as e:
-            st.error(f"Error parsing file: {e}")
+            st.error(f"Import could not be completed: {e}")

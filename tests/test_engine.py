@@ -6,7 +6,7 @@ from database.db_manager import (
     init_db, get_connection, get_all_tasks, get_task_by_id,
     update_task_progress, recalculate_rollup, get_review_queue,
     process_review_queue_item, get_target_tasks_for_matching,
-    get_project_summary_metrics
+    get_project_summary_metrics, import_schedule_tasks, get_dashboard_insights
 )
 from engine.extractor import parse_field_message, extract_progress_pct
 from engine.matcher import match_field_update, CONFIDENCE_THRESHOLD
@@ -114,3 +114,55 @@ def test_review_queue_approval_workflow():
     # Review queue should no longer contain this item
     pending_after = get_review_queue(db_path=TEST_DB)
     assert not any(item["id"] == audit_id for item in pending_after)
+
+
+def test_schedule_csv_upsert_updates_existing_task():
+    existing = get_task_by_id("OIL-L6-07", db_path=TEST_DB)
+    result = import_schedule_tasks(
+        [
+            {
+                "id": existing["id"],
+                "code": existing["code"],
+                "level": existing["level"],
+                "parent_id": existing["parent_id"],
+                "name": existing["name"],
+                "description": existing["description"],
+                "discipline": existing["discipline"],
+                "weight": existing["weight"],
+                "planned_duration": existing["planned_duration"],
+                "actual_duration": existing["actual_duration"],
+                "planned_start": existing["planned_start"],
+                "planned_end": existing["planned_end"],
+                "progress_pct": 82.0,
+                "status": "IN_PROGRESS",
+            }
+        ],
+        db_path=TEST_DB,
+    )
+
+    assert result == {"inserted": 0, "updated": 1, "total": 1}
+    assert get_task_by_id("OIL-L6-07", db_path=TEST_DB)["progress_pct"] == 82.0
+
+
+def test_schedule_csv_import_rejects_unknown_parent():
+    with pytest.raises(ValueError, match="parent_id"):
+        import_schedule_tasks(
+            [
+                {
+                    "id": "NEW-L6-01",
+                    "code": "NEW-TASK",
+                    "level": "L6",
+                    "parent_id": "MISSING-PARENT",
+                    "name": "New imported task",
+                    "discipline": "Piping & Mechanical",
+                }
+            ],
+            db_path=TEST_DB,
+        )
+
+
+def test_dashboard_insights_shape():
+    insights = get_dashboard_insights(db_path=TEST_DB)
+    assert "at_risk" in insights
+    assert len(insights["l2_workfronts"]) == 3
+    assert isinstance(insights["recent_avg_confidence"], float)
