@@ -15,6 +15,12 @@ Erected Line 24 spool at bay 1, completed 80% welding on Joint W-04
 
 The application extracts the progress, identifies the likely L5/L6 schedule node, applies an 85% confidence gate, records the decision, and recalculates the weighted L6 → L1 hierarchy.
 
+## Visual preview
+
+![ProjectPulse Control Room on a laptop](assets/dashboard-mockups/projectpulse-dashboard-laptop-4k.png)
+
+Responsive previews: [tablet landscape](assets/dashboard-mockups/projectpulse-dashboard-tablet-landscape.png) · [mobile landscape](assets/dashboard-mockups/projectpulse-dashboard-mobile-landscape.png)
+
 ## What is included
 
 - Executive command center with portfolio KPIs, WBS-level progress, workfront cards, risk signals, and recent activity.
