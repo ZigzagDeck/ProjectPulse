@@ -50,7 +50,7 @@ html, body, [class*="css"] {
 }
 
 [data-testid="stHeader"] { background: transparent; }
-[data-testid="stToolbar"] { right: 1rem; }
+[data-testid="stToolbar"], [data-testid="stStatusWidget"], [data-testid="stDecoration"] { display: none !important; }
 #MainMenu, footer { visibility: hidden; }
 .block-container { max-width: 1480px; padding: 1.35rem 2rem 3rem; }
 
@@ -227,6 +227,7 @@ p, label, [data-testid="stCaptionContainer"] { color: var(--muted); }
     .oil-header { padding: 20px; }
     .mini-grid { grid-template-columns: 1fr; }
     [data-testid="column"] { min-width: 100% !important; }
+    [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] { display: none !important; }
 }
 </style>
 """
