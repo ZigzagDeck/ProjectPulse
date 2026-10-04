@@ -21,6 +21,13 @@ The application extracts the progress, identifies the likely L5/L6 schedule node
 
 Responsive previews: [tablet landscape](assets/dashboard-mockups/projectpulse-dashboard-tablet-landscape.png) · [mobile landscape](assets/dashboard-mockups/projectpulse-dashboard-mobile-landscape.png)
 
+## Documentation
+
+- [Comprehensive ProjectPulse report](output/pdf/ProjectPulse_Comprehensive_Project_Report.pdf) — a 27-page, presentation-ready explanation of the problem, product capabilities, architecture, extraction and matching logic, governance model, WBS roll-up, dashboard, data model, validation, limitations, deployment path, KPIs, and roadmap.
+- [Original project brief](PS26-122.pdf) — the three-page source document that defines the initial problem, terminology, target workflow, and dashboard expectations.
+
+The comprehensive report is aligned with the current repository. It explicitly separates implemented prototype capabilities from future features such as LLM-assisted extraction, voice input, SSO, enterprise persistence, and live Primavera integration.
+
 ## What is included
 
 - Executive command center with portfolio KPIs, WBS-level progress, workfront cards, risk signals, and recent activity.
@@ -36,6 +43,7 @@ Responsive previews: [tablet landscape](assets/dashboard-mockups/projectpulse-da
 - CSV schedule export and validated CSV upsert with parent relationship checks.
 - Role-aware review, import, reset, and update controls.
 - Responsive dark interface with streamlined ProjectPulse branding.
+- A visually verified, landscape-format project report suitable for technical reviews, presentations, and submission support.
 
 ## Dashboard
 
@@ -185,23 +193,34 @@ The test suite covers:
 
 ```text
 ProjectPulse/
-├── app.py                    # Streamlit application and seven workspaces
-├── requirements.txt          # Runtime and test dependencies
-├── run.bat                   # Windows launcher
-├── oil_india_p6.db           # Pre-seeded 33-node demonstration schedule
+├── .gitattributes                         # Keeps PDF artifacts binary in Git
+├── README.md                              # Project overview and operating guide
+├── app.py                                 # Streamlit application and seven workspaces
+├── requirements.txt                       # Runtime and test dependencies
+├── run.bat                                # Windows launcher
+├── oil_india_p6.db                        # Pre-seeded 33-node demonstration schedule
+├── PS26-122.pdf                           # Original three-page project brief
+├── assets/
+│   └── dashboard-mockups/
+│       ├── projectpulse-dashboard-laptop-4k.png
+│       ├── projectpulse-dashboard-tablet-landscape.png
+│       └── projectpulse-dashboard-mobile-landscape.png
 ├── database/
-│   ├── db_manager.py         # CRUD, roll-up, insights, review, and CSV upsert
-│   ├── schema.py             # SQLite schema and indexes
-│   └── seed_data.py          # Demonstration WBS and initial field messages
+│   ├── db_manager.py                      # CRUD, roll-up, insights, review, and CSV upsert
+│   ├── schema.py                          # SQLite schema and indexes
+│   └── seed_data.py                       # Demonstration WBS and initial field messages
 ├── engine/
-│   ├── extractor.py          # Intent, state, percentage, and discipline extraction
-│   └── matcher.py            # Normalization and composite fuzzy matching
+│   ├── extractor.py                       # Intent, state, percentage, and discipline extraction
+│   └── matcher.py                         # Normalization and composite fuzzy matching
+├── output/
+│   └── pdf/
+│       └── ProjectPulse_Comprehensive_Project_Report.pdf
 ├── ui/
-│   ├── analytics.py          # Plotly figures and shared chart configuration
-│   ├── components.py         # Safe reusable UI components and role definitions
-│   └── styles.py             # Responsive ProjectPulse design system
+│   ├── analytics.py                       # Plotly figures and shared chart configuration
+│   ├── components.py                      # Safe reusable UI components and role definitions
+│   └── styles.py                          # Responsive ProjectPulse design system
 └── tests/
-    └── test_engine.py        # Nine deterministic integration and unit tests
+    └── test_engine.py                     # Nine deterministic integration and unit tests
 ```
 
 ## Technology
